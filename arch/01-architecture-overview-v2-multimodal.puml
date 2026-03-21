@@ -1,0 +1,159 @@
+@startuml
+title Local Knowledge Base Architecture v2 — Multimodal MVP
+
+skinparam backgroundColor white
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam ArrowColor #444444
+skinparam DefaultTextAlignment center
+skinparam wrapWidth 220
+skinparam maxMessageSize 200
+
+legend right
+== Main idea ==
+1. Raw files remain source of truth
+2. Document Classifier selects ETL branch
+3. PostgreSQL stores canonical data and search indexes
+4. Neo4j stores graph projection and relationships
+5. Search uses hybrid retrieval:
+   exact + FTS + vector + graph + code + OCR + optional image
+endlegend
+
+package "Raw Knowledge Sources" {
+  folder "Text-native\nmd, txt, rst, html,\nyaml, json, logs" as src_text
+  folder "Office Docs\ndoc, docx, pptx,\nxlsx, odt, rtf" as src_office
+  folder "PDF\nborn-digital + scanned" as src_pdf
+  folder "Code / Configs\npy, c, cpp, js, ts,\ngo, java, sh, Dockerfile" as src_code
+  folder "Images / Drawings\njpg, jpeg, png, webp,\ntiff, screenshots" as src_img
+  folder "Structured Diagrams\nsvg, drawio, mermaid,\nplantuml" as src_diagram
+}
+
+package "ETL / Ingestion Layer" {
+  component "File Watcher /\nScheduled Scanner" as etl_scan
+  component "Document Classifier" as etl_classify
+
+  package "Extractors" {
+    component "Text Extractor" as etl_text
+    component "Office / PDF Extractor" as etl_office
+    component "Page Splitter /\nRenderer" as etl_page
+    component "OCR Branch" as etl_ocr
+    component "Code Parser\nTree-sitter" as etl_code
+    component "Asset / Figure Extractor" as etl_asset
+    component "Diagram Parser\n(svg / drawio / mermaid / plantuml)" as etl_diagram
+  }
+
+  component "Chunker /\nNormalizer" as etl_chunk
+  component "Metadata Enricher\n(path, type, project,\nlanguage, tags, page refs)" as etl_meta
+  component "Entity Extractor" as etl_entity
+  component "Text Embedding Generator\nOllama" as etl_text_embed
+  component "Optional Image Embedder" as etl_img_embed
+  component "Graph Builder" as etl_graph
+  component "Indexer / Upsert Engine" as etl_upsert
+}
+
+package "Core Storage Layer" {
+  database "PostgreSQL\nSystem of Record" as pg
+  database "PostgreSQL FTS\n(tsvector / BM25-like)" as pgfts
+  database "pgvector\ntext embeddings" as pgv_text
+  database "pgvector\nimage/page embeddings" as pgv_img
+  database "Neo4j\nGraph Projection" as neo
+}
+
+package "Search / Retrieval Layer" {
+  component "Exact Search\nripgrep" as rg
+  component "Text Hybrid Retriever" as retr_text
+  component "OCR Search" as retr_ocr
+  component "Image Retriever\n(optional)" as retr_img
+  component "Graph Traversal" as retr_graph
+  component "Code-aware Search" as retr_code
+  component "Candidate Merger" as merge
+  component "Re-ranker" as rerank
+}
+
+package "API / Agent Layer" {
+  component "Query Classifier /\nModality Router" as qclass
+  component "Python Orchestrator /\nSearch API" as api
+  component "Answer Builder\nwith citations / evidence" as answer
+}
+
+actor User as user
+
+' ========= ETL FLOW =========
+src_text --> etl_scan
+src_office --> etl_scan
+src_pdf --> etl_scan
+src_code --> etl_scan
+src_img --> etl_scan
+src_diagram --> etl_scan
+
+etl_scan --> etl_classify : discover changed/new files
+
+etl_classify --> etl_text : text-native
+etl_classify --> etl_office : office / born-digital PDF
+etl_classify --> etl_page : paged documents
+etl_classify --> etl_ocr : scanned PDF / image text
+etl_classify --> etl_code : source code / configs
+etl_classify --> etl_asset : figures / screenshots / regions
+etl_classify --> etl_diagram : structured diagrams
+
+etl_text --> etl_chunk
+etl_office --> etl_page
+etl_page --> etl_chunk : page text / sections
+etl_page --> etl_asset : page assets / figures
+etl_ocr --> etl_chunk : OCR text blocks
+etl_ocr --> etl_asset : OCR-related assets
+etl_code --> etl_meta : symbols / imports / calls
+etl_diagram --> etl_chunk : parsed diagram text
+etl_asset --> etl_meta : asset metadata
+
+etl_chunk --> etl_meta : normalized chunks
+etl_meta --> etl_entity : entities / topics
+etl_meta --> etl_text_embed : text chunks / pages / OCR text
+etl_asset --> etl_img_embed : page / asset images
+etl_entity --> etl_graph
+etl_code --> etl_graph
+etl_meta --> etl_graph : document/page/chunk links
+etl_text_embed --> etl_upsert
+etl_img_embed --> etl_upsert
+etl_graph --> etl_upsert
+etl_meta --> etl_upsert
+
+etl_upsert --> pg : documents, pages, chunks,\nassets, ocr_blocks,\nsymbols, jobs, metadata
+etl_upsert --> pgfts : text / OCR search indexes
+etl_upsert --> pgv_text : text embeddings
+etl_upsert --> pgv_img : page / image embeddings
+etl_upsert --> neo : graph nodes + relationships
+
+' ========= QUERY FLOW =========
+user --> api : ask question
+api --> qclass : classify(query, filters, context)
+
+qclass --> rg : literal / regex / path hints
+qclass --> retr_text : text / hybrid
+qclass --> retr_ocr : OCR-heavy docs
+qclass --> retr_img : visual / diagram / screenshot search
+qclass --> retr_code : symbol / code lookup
+qclass --> retr_graph : relationship-aware expansion
+
+retr_text --> pgfts : lexical retrieval
+retr_text --> pgv_text : vector similarity
+retr_ocr --> pgfts : OCR block / page text search
+retr_img --> pgv_img : image/page similarity
+retr_code --> pg : symbols / files / repos
+retr_code --> rg : fallback exact code search
+retr_graph --> neo : neighbor traversal / hops
+
+rg --> merge
+retr_text --> merge
+retr_ocr --> merge
+retr_img --> merge
+retr_code --> merge
+retr_graph --> merge
+
+merge --> rerank
+rerank --> answer
+answer --> api
+api --> user : answer + paths + pages + evidence
+
+@enduml

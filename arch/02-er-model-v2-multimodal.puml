@@ -1,0 +1,380 @@
+@startuml
+title ER Model v2 — PostgreSQL + Neo4j Projection for Multimodal Knowledge Base
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam classAttributeIconSize 0
+hide methods
+
+package "PostgreSQL / System of Record" {
+
+entity "documents" as documents {
+  * id : uuid <<PK>>
+  --
+  source_path : text <<UNIQUE>>
+  source_type : text
+  title : text
+  checksum : text
+  mime_type : text
+  language : text
+  project_id : uuid <<FK>>
+  repo_id : uuid <<FK>>
+  created_at : timestamptz
+  updated_at : timestamptz
+  indexed_at : timestamptz
+  status : text
+  metadata_json : jsonb
+}
+
+entity "pages" as pages {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  page_number : int
+  page_label : text
+  page_text : text
+  render_path : text
+  width : int
+  height : int
+  page_embedding_model : text
+  page_embedding : vector
+  metadata_json : jsonb
+}
+
+entity "chunks" as chunks {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  page_id : uuid <<FK>>
+  chunk_index : int
+  chunk_kind : text
+  heading : text
+  content : text
+  token_count : int
+  char_count : int
+  start_offset : int
+  end_offset : int
+  content_hash : text
+  embedding_model : text
+  embedding : vector
+  tsv : tsvector
+  metadata_json : jsonb
+}
+
+entity "assets" as assets {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  page_id : uuid <<FK>>
+  asset_type : text
+  asset_role : text
+  storage_path : text
+  mime_type : text
+  width : int
+  height : int
+  caption_text : text
+  ocr_text : text
+  metadata_json : jsonb
+}
+
+entity "ocr_blocks" as ocr_blocks {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  page_id : uuid <<FK>>
+  asset_id : uuid <<FK>>
+  block_index : int
+  text : text
+  confidence : numeric
+  bbox_json : jsonb
+  tsv : tsvector
+  metadata_json : jsonb
+}
+
+entity "image_embeddings" as image_embeddings {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  page_id : uuid <<FK>>
+  asset_id : uuid <<FK>>
+  embedding_kind : text
+  embedding_model : text
+  embedding : vector
+  metadata_json : jsonb
+}
+
+entity "projects" as projects {
+  * id : uuid <<PK>>
+  --
+  name : text <<UNIQUE>>
+  kind : text
+  description : text
+  metadata_json : jsonb
+}
+
+entity "repos" as repos {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  name : text
+  root_path : text
+  default_branch : text
+  vcs_type : text
+  metadata_json : jsonb
+}
+
+entity "files" as files {
+  * id : uuid <<PK>>
+  --
+  repo_id : uuid <<FK>>
+  document_id : uuid <<FK>>
+  relative_path : text
+  file_type : text
+  extension : text
+  language : text
+  checksum : text
+  metadata_json : jsonb
+}
+
+entity "entities" as entities {
+  * id : uuid <<PK>>
+  --
+  canonical_name : text
+  entity_type : text
+  normalized_name : text
+  confidence : numeric
+  description : text
+  metadata_json : jsonb
+}
+
+entity "chunk_entities" as chunk_entities {
+  * chunk_id : uuid <<FK>>
+  * entity_id : uuid <<FK>>
+  --
+  mention_text : text
+  mention_count : int
+  start_offset : int
+  end_offset : int
+  confidence : numeric
+}
+
+entity "asset_entities" as asset_entities {
+  * asset_id : uuid <<FK>>
+  * entity_id : uuid <<FK>>
+  --
+  mention_text : text
+  confidence : numeric
+  source : text
+}
+
+entity "relations" as relations {
+  * id : uuid <<PK>>
+  --
+  from_entity_id : uuid <<FK>>
+  to_entity_id : uuid <<FK>>
+  relation_type : text
+  confidence : numeric
+  source : text
+  metadata_json : jsonb
+}
+
+entity "symbols" as symbols {
+  * id : uuid <<PK>>
+  --
+  file_id : uuid <<FK>>
+  repo_id : uuid <<FK>>
+  symbol_name : text
+  symbol_kind : text
+  fq_name : text
+  signature : text
+  language : text
+  start_line : int
+  end_line : int
+  metadata_json : jsonb
+}
+
+entity "symbol_links" as symbol_links {
+  * id : uuid <<PK>>
+  --
+  from_symbol_id : uuid <<FK>>
+  to_symbol_id : uuid <<FK>>
+  link_type : text
+  confidence : numeric
+  metadata_json : jsonb
+}
+
+entity "document_links" as document_links {
+  * id : uuid <<PK>>
+  --
+  from_document_id : uuid <<FK>>
+  to_document_id : uuid <<FK>>
+  link_type : text
+  raw_target : text
+  metadata_json : jsonb
+}
+
+entity "index_jobs" as index_jobs {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  job_type : text
+  status : text
+  started_at : timestamptz
+  finished_at : timestamptz
+  error_text : text
+  worker_id : text
+}
+
+projects ||--o{ documents
+projects ||--o{ repos
+repos ||--o{ documents
+repos ||--o{ files
+documents ||--o{ pages
+documents ||--o{ chunks
+documents ||--o{ assets
+documents ||--o{ ocr_blocks
+documents ||--o{ image_embeddings
+documents ||--o{ document_links
+documents ||--o{ index_jobs
+pages ||--o{ chunks
+pages ||--o{ assets
+pages ||--o{ ocr_blocks
+pages ||--o{ image_embeddings
+assets ||--o{ ocr_blocks
+assets ||--o{ image_embeddings
+files ||--o{ symbols
+repos ||--o{ symbols
+chunks ||--o{ chunk_entities
+entities ||--o{ chunk_entities
+assets ||--o{ asset_entities
+entities ||--o{ asset_entities
+entities ||--o{ relations : from
+entities ||--o{ relations : to
+symbols ||--o{ symbol_links : from
+symbols ||--o{ symbol_links : to
+}
+
+package "Neo4j / Graph Projection" {
+
+class "(:Document)" as gDocument {
+  doc_id
+  title
+  source_path
+  source_type
+}
+
+class "(:Page)" as gPage {
+  page_id
+  page_number
+  render_path
+}
+
+class "(:Chunk)" as gChunk {
+  chunk_id
+  chunk_index
+  chunk_kind
+}
+
+class "(:Asset)" as gAsset {
+  asset_id
+  asset_type
+  asset_role
+}
+
+class "(:OCRBlock)" as gOCR {
+  ocr_block_id
+  block_index
+}
+
+class "(:Entity)" as gEntity {
+  entity_id
+  canonical_name
+  entity_type
+}
+
+class "(:Project)" as gProject {
+  project_id
+  name
+}
+
+class "(:Repo)" as gRepo {
+  repo_id
+  name
+}
+
+class "(:File)" as gFile {
+  file_id
+  relative_path
+  language
+}
+
+class "(:Symbol)" as gSymbol {
+  symbol_id
+  symbol_name
+  symbol_kind
+  fq_name
+}
+
+gProject --> gDocument : BELONGS_TO
+gProject --> gRepo : OWNS
+gRepo --> gFile : CONTAINS
+gDocument --> gPage : HAS_PAGE
+gDocument --> gChunk : HAS_CHUNK
+gPage --> gChunk : HAS_CHUNK
+gPage --> gAsset : HAS_ASSET
+gPage --> gOCR : HAS_OCR_BLOCK
+gAsset --> gOCR : HAS_OCR_BLOCK
+gChunk --> gEntity : MENTIONS
+gAsset --> gEntity : MENTIONS / DEPICTS
+gOCR --> gEntity : MENTIONS
+gFile --> gSymbol : DEFINES
+gSymbol --> gSymbol : CALLS / IMPORTS / REFERENCES
+gDocument --> gDocument : LINKS_TO
+gChunk --> gSymbol : REFERENCES
+gEntity --> gEntity : RELATED_TO
+}
+
+documents ..> gDocument : project
+pages ..> gPage : project
+chunks ..> gChunk : project
+assets ..> gAsset : project
+ocr_blocks ..> gOCR : project
+entities ..> gEntity : project
+projects ..> gProject : project
+repos ..> gRepo : project
+files ..> gFile : project
+symbols ..> gSymbol : project
+
+note bottom of documents
+Source of truth:
+raw documents, metadata,
+indexing state, timestamps
+end note
+
+note bottom of pages
+Paged documents become
+addressable by page / slide
+and can be retrieved visually
+end note
+
+note bottom of assets
+Assets represent figures,
+screenshots, drawings,
+embedded images and regions
+end note
+
+note bottom of ocr_blocks
+OCR text is stored separately
+for scanned PDFs and images
+to support searchable evidence
+end note
+
+note bottom of image_embeddings
+Image/page embeddings are optional
+but enable visual similarity search
+for diagrams and screenshots
+end note
+
+@enduml

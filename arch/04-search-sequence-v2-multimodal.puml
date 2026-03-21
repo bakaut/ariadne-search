@@ -1,0 +1,123 @@
+@startuml
+title Search Sequence Flow v2 — Multimodal Knowledge Base MVP
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+skinparam wrapWidth 200
+
+actor User as user
+participant "Search API / Orchestrator" as api
+participant "Query Classifier /\nModality Router" as classifier
+participant "ripgrep Adapter" as rg
+participant "FTS Retriever" as fts
+participant "Vector Retriever\n(text)" as vec
+participant "OCR Retriever" as ocrr
+participant "Image Retriever\n(optional)" as imgr
+participant "Code Search" as code
+participant "Graph Traversal" as graph
+participant "Candidate Merger" as merge
+participant "Re-ranker" as rerank
+participant "Answer Builder" as answer
+
+database "PostgreSQL\nmetadata + chunks + pages + assets" as pg
+database "PostgreSQL FTS\ntext + OCR" as pgfts
+database "pgvector\ntext embeddings" as pgv_text
+database "pgvector\nimage/page embeddings" as pgv_img
+database "Neo4j" as neo
+
+== User query ==
+user -> api : ask(question, filters, optional image?)
+api -> classifier : classify(query, filters, context)
+
+classifier -> classifier : detect intent\nexact / semantic / OCR /\nvisual / code / graph / hybrid
+classifier --> api : search plan
+
+== Retrieval phase ==
+par Exact search
+  alt query contains exact literals / regex / path hints
+    api -> rg : search(query)
+    rg --> api : exact_hits
+  else no exact branch
+    note right of rg
+      Skip when exact search
+      is not useful
+    end note
+  end
+else Lexical text search
+  api -> fts : search text chunks(query, filters)
+  fts -> pgfts : MATCH / ranking
+  pgfts --> fts : lexical_hits
+  fts --> api : lexical_hits
+else Semantic text search
+  api -> vec : search(query, filters)
+  vec -> pgv_text : vector similarity top-k
+  pgv_text --> vec : semantic_hits
+  vec --> api : semantic_hits
+else OCR search
+  api -> ocrr : search OCR text(query, filters)
+  ocrr -> pgfts : OCR block / page text retrieval
+  pgfts --> ocrr : ocr_hits
+  ocrr --> api : ocr_hits
+else Code-aware search
+  alt intent is code/config/symbol lookup
+    api -> code : search(query, filters)
+    code -> pg : lookup files / symbols / repos
+    pg --> code : code_hits
+    code --> api : code_hits
+  else no code branch
+    note right of code
+      Skip for pure document queries
+    end note
+  end
+else Visual / image search
+  alt query implies diagram/screenshot search or image input exists
+    api -> imgr : search(query or image, filters)
+    imgr -> pgv_img : page / asset similarity
+    pgv_img --> imgr : image_hits
+    imgr --> api : image_hits
+  else no image branch
+    note right of imgr
+      Optional branch for
+      drawings, diagrams,
+      screenshots, slides
+    end note
+  end
+end
+
+== Merge initial candidates ==
+api -> merge : merge(exact_hits, lexical_hits,\nsemantic_hits, ocr_hits,\ncode_hits, image_hits)
+merge -> merge : normalize scores\nremove duplicates\npreserve evidence source
+merge --> api : initial_candidates
+
+== Graph expansion ==
+alt graph or hybrid mode
+  api -> graph : expand(initial_candidates,\ndocument/page/chunk/asset/entity/symbol,\nhops=1..2)
+  graph -> neo : traverse neighbors
+  neo --> graph : related nodes + edges
+  graph --> api : graph_context
+else no graph expansion
+  note right of graph
+    Skip for very narrow
+    exact-only lookups
+  end note
+end
+
+== Final ranking ==
+api -> rerank : rerank(query,\ninitial_candidates + graph_context)
+
+rerank -> rerank : features:\n- exact score\n- BM25 / lexical\n- text similarity\n- OCR relevance\n- image similarity\n- graph distance\n- code relevance\n- freshness\n- source trust
+rerank --> api : ranked_results
+
+== Build answer ==
+api -> answer : build(ranked_results)
+answer -> pg : fetch snippet / page / asset /\npath / metadata
+pg --> answer : evidence payload
+answer -> answer : compose response\nwith citations, paths,\npage numbers, asset refs,\nwhy found
+answer --> api : final_response
+
+api --> user : answer + sources + pages + assets
+
+@enduml

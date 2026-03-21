@@ -1,0 +1,130 @@
+@startuml
+title ETL Sequence Flow v2 — Multimodal Knowledge Base MVP
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+skinparam wrapWidth 200
+
+actor "Scheduler / File Watcher" as watcher
+participant "Scanner" as scanner
+participant "Document Classifier" as classifier
+participant "Text Extractor" as textx
+participant "Office / PDF Extractor" as officex
+participant "Page Splitter / Renderer" as pager
+participant "OCR Worker" as ocr
+participant "Chunker / Normalizer" as chunker
+participant "Metadata Enricher" as enricher
+participant "Entity Extractor" as ner
+participant "Tree-sitter Parser" as ts
+participant "Asset / Figure Extractor" as assetx
+participant "Text Embeddings\nOllama" as ollama
+participant "Optional Image Embedder" as imged
+participant "Upsert Engine" as upsert
+database "PostgreSQL" as pg
+database "Neo4j" as neo
+
+== Detect changed file ==
+watcher -> scanner : scan sources()
+scanner -> scanner : detect changed/new files\nby checksum / mtime
+scanner --> watcher : changed file list
+
+loop for each changed file
+  watcher -> classifier : classify(file_path, mime, extension)
+  classifier --> watcher : document_type + ETL plan
+
+  alt text-native file
+    watcher -> textx : extract(file)
+    textx --> watcher : raw_text
+    watcher -> chunker : chunk(raw_text)
+    chunker --> watcher : chunks[]
+  else office or born-digital PDF
+    watcher -> officex : extract(file)
+    officex --> watcher : doc_text + structure
+    watcher -> pager : split/render pages
+    pager --> watcher : pages[] + page_text[]
+    watcher -> chunker : chunk(page_text / sections)
+    chunker --> watcher : chunks[]
+  else scanned PDF
+    watcher -> pager : render pages(file)
+    pager --> watcher : page_images[]
+    watcher -> ocr : OCR(page_images[])
+    ocr --> watcher : pages[] + ocr_blocks[] + page_text[]
+    watcher -> chunker : chunk(page_text / OCR text)
+    chunker --> watcher : chunks[]
+  else standalone image / screenshot / drawing
+    watcher -> assetx : register asset(file)
+    assetx --> watcher : assets[]
+    watcher -> ocr : OCR(asset images)
+    ocr --> watcher : ocr_blocks[] + ocr_text
+    watcher -> chunker : chunk(ocr_text)
+    chunker --> watcher : chunks[]
+  else source code / config
+    watcher -> textx : load source text
+    textx --> watcher : raw_text
+    watcher -> chunker : chunk(raw_text)
+    chunker --> watcher : chunks[]
+    watcher -> ts : parse(file)
+    ts --> watcher : symbols + symbol_links
+  else structured diagram
+    watcher -> textx : read diagram source
+    textx --> watcher : diagram_text
+    watcher -> chunker : chunk(diagram_text)
+    chunker --> watcher : chunks[]
+    watcher -> assetx : optional preview/render
+    assetx --> watcher : assets[]
+  end
+
+  watcher -> enricher : enrich(file metadata,\npages, chunks, assets)
+  enricher -> enricher : infer project, repo, tags,\nlanguage, source_type, page refs
+  enricher --> watcher : enriched artifacts
+
+  watcher -> ner : extract entities/topics
+  ner --> watcher : entity mentions + relations
+
+  opt page or asset images exist
+    watcher -> imged : embed(pages/assets)
+    imged --> watcher : image/page vectors[]
+  end
+
+  opt text or OCR chunks exist
+    watcher -> ollama : embed(chunks/page_text/ocr_text)
+    ollama --> watcher : text vectors[]
+  end
+
+  watcher -> upsert : persist all artifacts
+
+  group PostgreSQL upserts
+    upsert -> pg : upsert documents
+    upsert -> pg : upsert pages
+    upsert -> pg : upsert assets
+    upsert -> pg : upsert ocr_blocks
+    upsert -> pg : upsert chunks + tsvector + embedding
+    upsert -> pg : upsert image_embeddings
+    upsert -> pg : upsert entities
+    upsert -> pg : upsert chunk_entities / asset_entities
+    upsert -> pg : upsert symbols / symbol_links
+    upsert -> pg : write index_jobs status
+  end
+
+  group Neo4j graph projection
+    upsert -> neo : MERGE (:Document)
+    upsert -> neo : MERGE (:Page)
+    upsert -> neo : MERGE (:Chunk)
+    upsert -> neo : MERGE (:Asset)
+    upsert -> neo : MERGE (:OCRBlock)
+    upsert -> neo : MERGE (:Entity)
+    upsert -> neo : MERGE (:Project/:Repo/:File/:Symbol)
+    upsert -> neo : MERGE relationships\nHAS_PAGE / HAS_CHUNK /\nHAS_ASSET / HAS_OCR_BLOCK /\nMENTIONS / DEFINES / CALLS
+  end
+
+  upsert --> watcher : ok / error
+end
+
+== Final status ==
+watcher -> pg : update indexing summary
+watcher --> watcher : emit metrics / logs / events
+
+@enduml

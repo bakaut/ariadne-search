@@ -1,0 +1,117 @@
+@startuml
+title Deployment Diagram v2 — Multimodal Local Knowledge Base MVP
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+skinparam wrapWidth 220
+skinparam maxMessageSize 180
+
+node "Local Host / Workstation / Home Server" as host {
+
+  folder "Raw Knowledge Sources\n(notes, office docs, pdf,\nrepos, configs, images,\ndiagrams, screenshots)" as raw_sources
+  folder "Config Directory\n(.env, yaml, prompts,\nchunking rules, ETL config)" as cfg_dir
+  folder "Rendered Pages / Preview Cache\n(page images, thumbnails,\nasset previews)" as preview_cache
+  folder "Backup Directory\n(pg_dump, neo4j dump,\nconfig backup)" as backup_dir
+
+  node "Docker / Podman Runtime" as runtime {
+
+    node "knowledge-net" as net
+
+    artifact "Python API Container\nFastAPI / Search API" as api
+    artifact "Python Worker Container\nETL / Indexer / Scheduler" as worker
+    artifact "PostgreSQL Container\ncatalog + FTS + pgvector" as pg
+    artifact "Neo4j Container\ngraph projection" as neo
+    artifact "Ollama Container\ntext embeddings" as ollama
+    artifact "OCR / Document Tools Container\nOCR + PDF tools + renderers" as doctools
+    artifact "Optional Image Embedder Container\nvisual embeddings" as vision
+    artifact "Optional UI Container\nadmin / debug / search console" as ui
+  }
+
+  database "pg_data volume" as pg_data
+  database "neo4j_data volume" as neo_data
+  database "ollama_models volume" as ollama_models
+  folder "worker_state volume\n(checkpoints, caches,\nparsed artifacts)" as worker_state
+  folder "logs volume" as logs_vol
+}
+
+cloud "User / Local Client" as user
+
+' ========= Access =========
+user --> api : HTTP / REST
+user --> ui : browser (optional)
+
+' ========= Runtime internal calls =========
+api --> pg : metadata / chunks /\npages / assets / FTS / vectors
+api --> neo : graph traversal
+api --> worker : optional reindex trigger
+
+worker --> raw_sources : read files
+worker --> cfg_dir : read pipeline config
+worker --> preview_cache : write page renders / previews
+worker --> doctools : extract / render / OCR
+worker --> ollama : text embeddings
+worker --> vision : optional image embeddings
+worker --> pg : upsert documents / pages /\nassets / OCR / chunks /\nsymbols / jobs
+worker --> neo : graph projection MERGE
+
+api --> cfg_dir : read app config
+ui --> api : search/debug requests
+
+' ========= Volumes =========
+pg --> pg_data : data files
+neo --> neo_data : graph store
+ollama --> ollama_models : models cache
+worker --> worker_state : temp/cache/checkpoints
+api --> logs_vol : app logs
+worker --> logs_vol : ETL logs
+pg --> logs_vol : db logs
+neo --> logs_vol : graph logs
+doctools --> logs_vol : OCR / extractor logs
+
+' ========= Backup flow =========
+pg --> backup_dir : pg_dump / base backup
+neo --> backup_dir : neo4j dump/export
+cfg_dir --> backup_dir : config snapshot
+preview_cache --> backup_dir : optional preview cache backup
+
+' ========= Notes =========
+note right of pg
+PostgreSQL is the source of truth:
+- documents
+- pages
+- chunks
+- assets
+- OCR blocks
+- symbols
+- text/image vectors
+- indexing state
+end note
+
+note right of neo
+Neo4j is a projection layer:
+- document/page/chunk/asset/entity graph
+- symbol relationships
+- traversal context
+- explainable links
+end note
+
+note right of worker
+Worker responsibilities:
+- classify document type
+- extract text
+- render pages
+- run OCR
+- parse code via Tree-sitter
+- call embedding services
+- write Postgres + Neo4j
+end note
+
+note bottom of raw_sources
+Raw files stay outside databases
+and remain canonical source material
+end note
+
+@enduml
