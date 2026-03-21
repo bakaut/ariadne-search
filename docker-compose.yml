@@ -1,0 +1,139 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg18-trixie
+    container_name: kb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  neo4j:
+    image: neo4j:2026.02.2
+    container_name: kb-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${KB_NEO4J_PASSWORD}
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p '${KB_NEO4J_PASSWORD}' 'RETURN 1;' >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+
+  neo4j-init:
+    image: neo4j:2026.02.2
+    container_name: kb-neo4j-init
+    restart: "no"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      KB_NEO4J_PASSWORD: ${KB_NEO4J_PASSWORD}
+      KB_NEO4J_DATABASE: ${KB_NEO4J_DATABASE:-neo4j}
+    volumes:
+      - ./init/neo4j:/init:ro
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      cypher-shell -a bolt://neo4j:7687
+      -u neo4j
+      -p "$KB_NEO4J_PASSWORD"
+      -d "$KB_NEO4J_DATABASE"
+      -f /init/001_neo4j_init.cypher
+
+  ollama:
+    image: ollama/ollama
+    container_name: kb-ollama
+    restart: unless-stopped
+    ports:
+      - "${KB_OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  api:
+    build:
+      context: ./api
+    container_name: kb-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      ollama:
+        condition: service_started
+    environment:
+      KB_APP_ENV: prod
+      KB_LOG_LEVEL: ${KB_LOG_LEVEL:-INFO}
+      KB_SOURCE_ROOTS: ${KB_SOURCE_ROOTS:-/data/knowledge}
+      KB_POSTGRES_DSN: ${KB_POSTGRES_DSN}
+      KB_POSTGRES_SCHEMA: ${KB_POSTGRES_SCHEMA:-kb}
+      KB_NEO4J_URI: bolt://neo4j:7687
+      KB_NEO4J_USER: neo4j
+      KB_NEO4J_PASSWORD: ${KB_NEO4J_PASSWORD}
+      KB_NEO4J_DATABASE: ${KB_NEO4J_DATABASE:-neo4j}
+      KB_OLLAMA_BASE_URL: http://ollama:11434
+      KB_TEXT_EMBEDDING_MODEL: ${KB_TEXT_EMBEDDING_MODEL:-embeddinggemma}
+      KB_ENABLE_EMBEDDINGS: ${KB_ENABLE_EMBEDDINGS:-false}
+      KB_ENABLE_GRAPH_CONTEXT: ${KB_ENABLE_GRAPH_CONTEXT:-true}
+      KB_ENABLE_EXACT_SEARCH: ${KB_ENABLE_EXACT_SEARCH:-true}
+      KB_ENABLE_IMAGE_SEARCH: ${KB_ENABLE_IMAGE_SEARCH:-false}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./knowledge:/data/knowledge:ro
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000"]
+
+  worker:
+    build:
+      context: ./worker
+    container_name: kb-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      ollama:
+        condition: service_started
+    environment:
+      KB_APP_ENV: prod
+      KB_LOG_LEVEL: ${KB_LOG_LEVEL:-INFO}
+      KB_SOURCE_ROOTS: ${KB_SOURCE_ROOTS:-/data/knowledge}
+      KB_SCHEDULER_INTERVAL_SECONDS: ${KB_SCHEDULER_INTERVAL_SECONDS:-300}
+      KB_POSTGRES_DSN: ${KB_POSTGRES_DSN}
+      KB_POSTGRES_SCHEMA: ${KB_POSTGRES_SCHEMA:-kb}
+      KB_NEO4J_URI: bolt://neo4j:7687
+      KB_NEO4J_USER: neo4j
+      KB_NEO4J_PASSWORD: ${KB_NEO4J_PASSWORD}
+      KB_NEO4J_DATABASE: ${KB_NEO4J_DATABASE:-neo4j}
+      KB_OLLAMA_BASE_URL: http://ollama:11434
+      KB_TEXT_EMBEDDING_MODEL: ${KB_TEXT_EMBEDDING_MODEL:-embeddinggemma}
+      KB_ENABLE_EMBEDDINGS: ${KB_ENABLE_EMBEDDINGS:-false}
+      KB_ENABLE_NEO4J_PROJECTION: true
+    volumes:
+      - ./knowledge:/data/knowledge:ro
+    command: ["run-forever"]
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  ollama_data:
