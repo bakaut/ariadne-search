@@ -3,3 +3,4 @@ uv.lock
 .venv
 *.egg-info
 .pytest_cache
+.env

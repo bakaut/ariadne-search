@@ -10,7 +10,7 @@
 ## Что внутри
 
 - `docker-compose.yml`
-- `.env.example`
+- `.env.template`
 - `init/postgres/001_postgres_init.sql`
 - `init/neo4j/001_neo4j_init.cypher`
 - `api/` — FastAPI search service
@@ -21,7 +21,7 @@
 ## Быстрый старт
 
 ```bash
-cp .env.example .env
+cp .env.template .env
 mkdir -p knowledge
 
 docker compose up -d postgres neo4j ollama
