@@ -54,9 +54,6 @@ docker compose up -d --build api worker worker-api
 - worker dummy API Swagger UI: `http://localhost:8010/docs`
 - worker dummy API OpenAPI JSON: `http://localhost:8010/openapi.json`
 
-Если deployment поднят на удалённом хосте, замени `localhost` на адрес сервера, например:
-- `http://home.poymoymir.ru:8000/docs`
-- `http://home.poymoymir.ru:8010/docs`
 
 ## Полезные команды
 
