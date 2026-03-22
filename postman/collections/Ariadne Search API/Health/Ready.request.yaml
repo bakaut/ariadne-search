@@ -1,0 +1,5 @@
+$kind: http-request
+description: Readiness probe for database-backed API startup.
+url: "{{baseUrl}}/health/ready"
+method: GET
+order: 2000

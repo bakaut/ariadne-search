@@ -54,6 +54,19 @@ docker compose up -d --build api worker worker-api
 - worker dummy API Swagger UI: `http://localhost:8010/docs`
 - worker dummy API OpenAPI JSON: `http://localhost:8010/openapi.json`
 
+## Postman
+
+Готовые Postman-файлы лежат в `postman/`:
+- `postman/ariadne-search.postman_collection.json`
+- `postman/ariadne-search-local.postman_environment.json`
+- `postman/ariadne-search-remote.postman_environment.json`
+
+Как использовать:
+- импортируй collection и нужный environment в Postman;
+- выбери environment c `baseUrl`;
+- открой любой request из папки `Search`;
+- в Postman нажми `</>` чтобы сгенерировать code snippet для текущего search-запроса.
+
 
 ## Полезные команды
 

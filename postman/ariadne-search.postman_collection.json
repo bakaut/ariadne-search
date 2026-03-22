@@ -1,0 +1,149 @@
+{
+  "info": {
+    "_postman_id": "80f4fe2d-7478-47bd-9451-0f1d1396cbd2",
+    "name": "Ariadne Search API",
+    "description": "Postman collection for exercising the Knowledge Base Search API and generating code snippets from ready-made search requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/live",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            },
+            "description": "Basic liveness probe."
+          },
+          "response": []
+        },
+        {
+          "name": "Ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "description": "Readiness probe for database-backed API startup."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Search",
+      "item": [
+        {
+          "name": "Search Apricot Lexical",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"абрикос\",\n  \"top_k\": 5,\n  \"filters\": {\n    \"source_types\": [],\n    \"path_prefixes\": [],\n    \"languages\": []\n  },\n  \"include_graph_context\": false,\n  \"include_exact\": true,\n  \"include_code\": true,\n  \"include_ocr\": true,\n  \"include_semantic\": true,\n  \"include_image\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ]
+            },
+            "description": "Simple lexical search targeting the indexed apricot markdown document."
+          },
+          "response": []
+        },
+        {
+          "name": "Search Python Linter",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"RemovePodsViolatingNodeAffinity\",\n  \"top_k\": 5,\n  \"filters\": {\n    \"source_types\": [\"code\"],\n    \"path_prefixes\": [\"/data/knowledge/descheduler_policy_linter_v0351.py\"],\n    \"languages\": [\"python\"]\n  },\n  \"include_graph_context\": false,\n  \"include_exact\": true,\n  \"include_code\": true,\n  \"include_ocr\": false,\n  \"include_semantic\": true,\n  \"include_image\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ]
+            },
+            "description": "Focused code search against the uploaded Python linter."
+          },
+          "response": []
+        },
+        {
+          "name": "Search By Path Prefix",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"pluginConfig\",\n  \"top_k\": 5,\n  \"filters\": {\n    \"source_types\": [],\n    \"path_prefixes\": [\"/data/knowledge/\"],\n    \"languages\": []\n  },\n  \"include_graph_context\": false,\n  \"include_exact\": true,\n  \"include_code\": true,\n  \"include_ocr\": true,\n  \"include_semantic\": true,\n  \"include_image\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/search",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "search"
+              ]
+            },
+            "description": "General search request showing how to use path prefix filters."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

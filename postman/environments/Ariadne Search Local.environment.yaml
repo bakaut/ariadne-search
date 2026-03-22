@@ -1,0 +1,5 @@
+name: Ariadne Search Local
+values:
+  - key: baseUrl
+    value: 'http://localhost:8000'
+    enabled: true

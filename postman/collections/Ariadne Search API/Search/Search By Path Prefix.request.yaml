@@ -1,0 +1,25 @@
+$kind: http-request
+description: General search request showing how to use path prefix filters.
+url: "{{baseUrl}}/search"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "query": "pluginConfig",
+      "top_k": 5,
+      "filters": {
+        "source_types": [],
+        "path_prefixes": ["/data/knowledge/"],
+        "languages": []
+      },
+      "include_graph_context": false,
+      "include_exact": true,
+      "include_code": true,
+      "include_ocr": true,
+      "include_semantic": true,
+      "include_image": false
+    }
+order: 3000

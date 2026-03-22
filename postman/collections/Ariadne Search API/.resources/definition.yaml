@@ -1,0 +1,5 @@
+$kind: collection
+description: Postman collection for exercising the Knowledge Base Search API and
+  generating code snippets from ready-made search requests.
+variables:
+  baseUrl: http://localhost:8000

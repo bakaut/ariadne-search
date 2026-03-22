@@ -1,0 +1,12 @@
+# Use this workspace to collaborate
+workspace:
+  id: 295706fc-05f0-44a8-8874-75261627329d
+cloudResources:
+  collections:
+    ../postman/collections/Ariadne Search API: 63e62aed-d9e1-42db-9769-028da5d1d57e
+
+# All resources in the `postman/` folder are automatically registered in Local View.
+# Point to additional files outside the `postman/` folder to register them individually. Example:
+#localResources:
+#  collections:
+#    - ../tests/E2E Test Collection/

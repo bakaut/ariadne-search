@@ -1,0 +1,25 @@
+$kind: http-request
+description: Focused code search against the uploaded Python linter.
+url: "{{baseUrl}}/search"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "query": "RemovePodsViolatingNodeAffinity",
+      "top_k": 5,
+      "filters": {
+        "source_types": ["code"],
+        "path_prefixes": ["/data/knowledge/descheduler_policy_linter_v0351.py"],
+        "languages": ["python"]
+      },
+      "include_graph_context": false,
+      "include_exact": true,
+      "include_code": true,
+      "include_ocr": false,
+      "include_semantic": true,
+      "include_image": false
+    }
+order: 2000
