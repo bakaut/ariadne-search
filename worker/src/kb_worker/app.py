@@ -22,8 +22,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="kb-worker dummy api",
+        summary="Worker-side upload and indexing API for local knowledge files.",
+        description=(
+            "Use this API to upload a single file into the first configured knowledge root and "
+            "run synchronous ETL/indexing for quick manual testing. Swagger UI is intended for "
+            "basic validation of accepted file types, relative paths, and indexing responses."
+        ),
         version="0.1.0",
         lifespan=lifespan,
+        openapi_tags=[
+            {
+                "name": "health",
+                "description": "Basic liveness probes for the worker dummy API.",
+            },
+            {
+                "name": "dummy",
+                "description": (
+                    "Manual upload endpoint for ad hoc ETL/indexing tests. The request is multipart "
+                    "form data with a required file and an optional relative_path."
+                ),
+            },
+        ],
     )
     app.include_router(health_router)
     app.include_router(dummy_router)

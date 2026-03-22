@@ -36,6 +36,7 @@ class PostgresStore:
         with psycopg.connect(self.settings.postgres_dsn) as conn:
             with conn.cursor() as cur:
                 job_id = uuid4()
+                self._upsert_document(cur, bundle)
                 cur.execute(
                     f"""
                     INSERT INTO {self.schema}.index_jobs (id, document_id, job_type, status, started_at, worker_id)
@@ -44,7 +45,6 @@ class PostgresStore:
                     """,
                     (str(job_id), str(bundle.document_id), "etl_index", "running", "worker"),
                 )
-                self._upsert_document(cur, bundle)
                 self._replace_pages(cur, bundle)
                 self._replace_assets(cur, bundle)
                 self._replace_ocr_blocks(cur, bundle)
@@ -65,11 +65,23 @@ class PostgresStore:
         with psycopg.connect(self.settings.postgres_dsn) as conn:
             with conn.cursor() as cur:
                 cur.execute(
+                    f"SELECT id FROM {self.schema}.documents WHERE id = %s LIMIT 1",
+                    (document_id,),
+                )
+                persisted_document_id = cur.fetchone()
+                cur.execute(
                     f"""
                     INSERT INTO {self.schema}.index_jobs (id, document_id, job_type, status, started_at, finished_at, error_text, worker_id)
                     VALUES (%s, %s, %s, %s, now(), now(), %s, %s)
                     """,
-                    (str(uuid4()), document_id, "etl_index", "failed", error_text[:4000], "worker"),
+                    (
+                        str(uuid4()),
+                        persisted_document_id[0] if persisted_document_id else None,
+                        "etl_index",
+                        "failed",
+                        error_text[:4000],
+                        "worker",
+                    ),
                 )
             conn.commit()
 
@@ -241,6 +253,9 @@ class PostgresStore:
                 )
 
     def _replace_symbols(self, cur: psycopg.Cursor, bundle: ETLBundle) -> None:
+        if not bundle.symbols and not bundle.symbol_links:
+            return
+
         cur.execute(
             f"DELETE FROM {self.schema}.symbols WHERE file_id IN (SELECT id FROM {self.schema}.files WHERE document_id = %s)",
             (str(bundle.document_id),),
@@ -296,7 +311,11 @@ class PostgresStore:
             INSERT INTO {self.schema}.files (
               id, repo_id, document_id, relative_path, file_type, extension, language, checksum, metadata_json
             ) VALUES (%s, NULL, %s, %s, %s, %s, %s, '', '{{}}'::jsonb)
-            ON CONFLICT (document_id, relative_path) DO UPDATE SET language = EXCLUDED.language
+            ON CONFLICT (document_id) DO UPDATE SET
+              relative_path = EXCLUDED.relative_path,
+              file_type = EXCLUDED.file_type,
+              extension = EXCLUDED.extension,
+              language = EXCLUDED.language
             RETURNING id
             """,
             (str(uuid4()), document_id, source_path, "file", source_path.rsplit(".", 1)[-1] if "." in source_path else "", language),
