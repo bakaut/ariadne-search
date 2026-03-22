@@ -55,6 +55,11 @@ def test_build_parser_accepts_supported_commands() -> None:
 
     assert parser.parse_args(["run-once"]).command == "run-once"
     assert parser.parse_args(["run-forever"]).command == "run-forever"
+    serve_args = parser.parse_args(["serve-dummy-api", "--host", "127.0.0.1", "--port", "8012", "--reload"])
+    assert serve_args.command == "serve-dummy-api"
+    assert serve_args.host == "127.0.0.1"
+    assert serve_args.port == 8012
+    assert serve_args.reload is True
 
 
 def test_main_run_once_calls_scheduler_and_closes(monkeypatch, settings) -> None:
@@ -95,3 +100,23 @@ def test_main_run_forever_currently_double_closes_when_scheduler_does_so_too(mon
         main_module.main()
 
     assert scheduler.close.call_count == 2
+
+
+def test_main_serve_dummy_api_calls_uvicorn(monkeypatch) -> None:
+    import kb_worker.main as main_module
+
+    serve_dummy_api = Mock()
+    monkeypatch.setattr(main_module, "serve_dummy_api", serve_dummy_api)
+    monkeypatch.setattr(
+        main_module,
+        "build_parser",
+        lambda: Mock(
+            parse_args=Mock(
+                return_value=Namespace(command="serve-dummy-api", host="127.0.0.1", port=8010, reload=True)
+            )
+        ),
+    )
+
+    main_module.main()
+
+    serve_dummy_api.assert_called_once_with(host="127.0.0.1", port=8010, reload=True)

@@ -132,6 +132,38 @@ services:
       - ./knowledge:/data/knowledge:ro
     command: ["run-forever"]
 
+  worker-api:
+    build:
+      context: ./worker
+    container_name: kb-worker-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j-init:
+        condition: service_completed_successfully
+      ollama:
+        condition: service_started
+    environment:
+      KB_APP_ENV: prod
+      KB_LOG_LEVEL: ${KB_LOG_LEVEL:-INFO}
+      KB_SOURCE_ROOTS: ${KB_SOURCE_ROOTS:-/data/knowledge}
+      KB_POSTGRES_DSN: ${KB_POSTGRES_DSN}
+      KB_POSTGRES_SCHEMA: ${KB_POSTGRES_SCHEMA:-kb}
+      KB_NEO4J_URI: bolt://neo4j:7687
+      KB_NEO4J_USER: neo4j
+      KB_NEO4J_PASSWORD: ${KB_NEO4J_PASSWORD}
+      KB_NEO4J_DATABASE: ${KB_NEO4J_DATABASE:-neo4j}
+      KB_OLLAMA_BASE_URL: http://ollama:11434
+      KB_TEXT_EMBEDDING_MODEL: ${KB_TEXT_EMBEDDING_MODEL:-embeddinggemma}
+      KB_ENABLE_EMBEDDINGS: ${KB_ENABLE_EMBEDDINGS:-false}
+      KB_ENABLE_NEO4J_PROJECTION: true
+    ports:
+      - "${WORKER_API_PORT:-8010}:8010"
+    volumes:
+      - ./knowledge:/data/knowledge
+    command: ["serve-dummy-api", "--host", "0.0.0.0", "--port", "8010"]
+
 volumes:
   postgres_data:
   neo4j_data:

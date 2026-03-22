@@ -6,6 +6,7 @@
 - Ollama
 - Python API (FastAPI)
 - Python Worker (ETL / Indexer / Scheduler)
+- Worker Dummy API для ручной загрузки документов
 
 ## Что внутри
 
@@ -33,12 +34,13 @@ docker compose exec ollama ollama pull embeddinggemma
 # включить embeddings в .env после загрузки модели
 # KB_ENABLE_EMBEDDINGS=true
 
-docker compose up -d --build api worker
+docker compose up -d --build api worker worker-api
 ```
 
 После старта:
 - API: `http://localhost:8000`
 - Swagger UI: `http://localhost:8000/docs`
+- Worker Dummy API: `http://localhost:8010`
 - Neo4j Browser: `http://localhost:7474`
 - PostgreSQL: `localhost:5432`
 - Ollama: `http://localhost:11434`
@@ -70,3 +72,11 @@ make reindex
 - `jpg`, `png`, `webp`, `svg`, `drawio`, `puml`
 
 Worker будет обходить `/data/knowledge` внутри контейнера.
+
+Для ручной загрузки документа без прямого копирования в `knowledge/` можно использовать dummy endpoint:
+
+```bash
+curl -X POST http://localhost:8010/dummy/documents \
+  -F "file=@./README.md" \
+  -F "relative_path=uploads/README.md"
+```
