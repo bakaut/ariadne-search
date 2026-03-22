@@ -15,7 +15,9 @@ class Settings(BaseSettings):
     api_title: str = "Knowledge Base Search API"
     api_version: str = "0.1.0"
 
-    source_roots: Annotated[list[Path], NoDecode] = Field(default_factory=lambda: [Path("/data/knowledge")])
+    source_roots: Annotated[list[Path], NoDecode] = Field(
+        default_factory=lambda: [Path("/data/knowledge")]
+    )
     postgres_dsn: str = "postgresql://kb:kb@postgres:5432/kb"
     postgres_schema: str = "kb"
 
@@ -26,14 +28,19 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://ollama:11434"
     text_embedding_model: str = "embeddinggemma"
+    answer_model: str = "llama3.1:8b"
     embedding_dimensions: int = 768
 
     default_top_k: int = 10
     max_top_k: int = 50
     enable_exact_search: bool = True
     enable_embeddings: bool = True
+    enable_answer_synthesis: bool = True
     enable_graph_context: bool = True
     enable_image_search: bool = False
+    answer_temperature: float = 0.1
+    answer_max_context_hits: int = 8
+    answer_max_context_chars: int = 6000
 
     @field_validator("source_roots", mode="before")
     @classmethod

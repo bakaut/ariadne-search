@@ -30,6 +30,7 @@ docker compose up -d postgres neo4j ollama
 docker compose run --rm neo4j-init
 
 docker compose exec ollama ollama pull embeddinggemma
+docker compose exec ollama ollama pull llama3.1:8b
 
 # включить embeddings в .env после загрузки модели
 # KB_ENABLE_EMBEDDINGS=true

@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KNOWLEDGE_DIR="${KNOWLEDGE_DIR:-$ROOT_DIR/knowledge}"
-WORKER_API_URL="${WORKER_API_URL:-http://localhost:8010}"
+WORKER_API_URL="${WORKER_API_URL:-http://192.168.1.11:8010}"
 UPLOAD_ENDPOINT="${UPLOAD_ENDPOINT:-$WORKER_API_URL/dummy/documents}"
 CURL_BIN="${CURL_BIN:-curl}"
 

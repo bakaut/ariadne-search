@@ -15,6 +15,7 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     top_k: int = Field(default=10, ge=1, le=50)
     filters: SearchFilters = Field(default_factory=SearchFilters)
+    include_answer: bool = True
     include_graph_context: bool = True
     include_exact: bool = True
     include_code: bool = True
@@ -57,4 +58,5 @@ class SearchResponse(BaseModel):
     query: str
     plan: SearchPlan
     total: int
+    answer: str | None = None
     results: list[SearchHit]

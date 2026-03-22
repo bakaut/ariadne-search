@@ -7,6 +7,7 @@ FastAPI Search API для локальной мультимодальной ба
 - POST `/search` с query classification и search plan;
 - lexical search по PostgreSQL FTS;
 - semantic search по pgvector через Ollama query embeddings;
+- финальный human-readable answer через локальную Ollama LLM по найденным chunks;
 - OCR search по `ocr_blocks`;
 - symbol/code search по таблицам `symbols` и `files`;
 - optional exact search через `ripgrep` по mounted source roots;
@@ -29,6 +30,7 @@ export KB_NEO4J_URI=bolt://neo4j:7687
 export KB_NEO4J_USER=neo4j
 export KB_NEO4J_PASSWORD=secret
 export KB_SOURCE_ROOTS=/data/knowledge
+export KB_ANSWER_MODEL=llama3.1:8b
 kb-api serve --host 0.0.0.0 --port 8000
 ```
 
@@ -37,3 +39,9 @@ kb-api serve --host 0.0.0.0 --port 8000
 - `GET /health/live`
 - `GET /health/ready`
 - `POST /search`
+
+Для answer synthesis нужен локально загруженный chat model в Ollama, например:
+
+```bash
+ollama pull llama3.1:8b
+```

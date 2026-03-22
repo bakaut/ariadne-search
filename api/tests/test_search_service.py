@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import Mock
 
 from kb_api.models import SearchFilters, SearchHit, SearchPlan, SearchRequest
@@ -13,12 +12,15 @@ def build_service(monkeypatch, settings):
         "store": Mock(),
         "graph": Mock(),
         "embedder": Mock(),
+        "answer_generator": Mock(),
         "classifier": Mock(),
     }
     monkeypatch.setattr(service_module, "PostgresSearchStore", lambda cfg: deps["store"])
     monkeypatch.setattr(service_module, "GraphContextStore", lambda cfg: deps["graph"])
     monkeypatch.setattr(service_module, "QueryEmbedder", lambda cfg: deps["embedder"])
+    monkeypatch.setattr(service_module, "AnswerGenerator", lambda cfg: deps["answer_generator"])
     monkeypatch.setattr(service_module, "QueryClassifier", lambda cfg: deps["classifier"])
+    deps["answer_generator"].generate_answer.return_value = None
     return service_module.SearchService(settings), deps
 
 
@@ -67,31 +69,64 @@ def test_search_service_routes_enabled_branches_and_clamps_top_k(monkeypatch, se
         graph=True,
         reasons=[],
     )
-    deps["store"].exact_search.return_value = [make_row(hit_id="e1", score=1.0, chunk_index=None, hit_kind="file_line")]
+    deps["store"].exact_search.return_value = [
+        make_row(hit_id="e1", score=1.0, chunk_index=None, hit_kind="file_line")
+    ]
     deps["store"].fts_search.return_value = [make_row(hit_id="l1", score=0.8)]
-    deps["store"].code_search.return_value = [make_row(hit_id="c1", hit_kind="symbol", symbol_name="fn", symbol_kind="function", chunk_index=None, score=0.9)]
-    deps["store"].ocr_search.return_value = [make_row(hit_id="o1", hit_kind="ocr_block", page_number=1, chunk_index=None, score=0.7)]
+    deps["store"].code_search.return_value = [
+        make_row(
+            hit_id="c1",
+            hit_kind="symbol",
+            symbol_name="fn",
+            symbol_kind="function",
+            chunk_index=None,
+            score=0.9,
+        )
+    ]
+    deps["store"].ocr_search.return_value = [
+        make_row(
+            hit_id="o1",
+            hit_kind="ocr_block",
+            page_number=1,
+            chunk_index=None,
+            score=0.7,
+        )
+    ]
     deps["embedder"].embed_query.return_value = [0.1, 0.2]
     deps["store"].semantic_search.return_value = [make_row(hit_id="s1", score=0.6)]
     deps["graph"].related_entities_by_source_path.return_value = {"/tmp/doc.md": ["OpenAI"]}
+    deps["answer_generator"].generate_answer.return_value = "Human readable answer [1]"
     request = SearchRequest(
         query="find function in src/main.py",
         top_k=10,
-        filters=SearchFilters(source_types=["text_native"], path_prefixes=["/tmp"], languages=["markdown"]),
+        filters=SearchFilters(
+            source_types=["text_native"],
+            path_prefixes=["/tmp"],
+            languages=["markdown"],
+        ),
         include_image=True,
     )
 
     response = service.search(request)
 
     deps["store"].exact_search.assert_called_once_with("find function in src/main.py", 3)
-    filters = {"source_types": ["text_native"], "path_prefixes": ["/tmp"], "languages": ["markdown"]}
+    filters = {
+        "source_types": ["text_native"],
+        "path_prefixes": ["/tmp"],
+        "languages": ["markdown"],
+    }
     deps["store"].fts_search.assert_called_once_with("find function in src/main.py", 3, filters)
     deps["store"].code_search.assert_called_once_with("find function in src/main.py", 3, filters)
     deps["store"].ocr_search.assert_called_once_with("find function in src/main.py", 3, filters)
     deps["embedder"].embed_query.assert_called_once_with("find function in src/main.py")
     deps["store"].semantic_search.assert_called_once_with([0.1, 0.2], 3, filters)
     deps["graph"].related_entities_by_source_path.assert_called_once()
+    deps["answer_generator"].generate_answer.assert_called_once_with(
+        "find function in src/main.py",
+        response.results,
+    )
     assert response.total == 3
+    assert response.answer == "Human readable answer [1]"
     assert len(response.results) == 3
 
 
@@ -114,6 +149,50 @@ def test_search_service_skips_semantic_search_without_embedding(monkeypatch, set
 
     deps["store"].semantic_search.assert_not_called()
     assert response.total == 1
+
+
+def test_search_service_skips_answer_generation_when_disabled_in_request(
+    monkeypatch,
+    settings,
+) -> None:
+    service, deps = build_service(monkeypatch, settings)
+    deps["classifier"].classify.return_value = SearchPlan(
+        exact=False,
+        lexical=True,
+        semantic=False,
+        ocr=False,
+        code=False,
+        image=False,
+        graph=False,
+        reasons=[],
+    )
+    deps["store"].fts_search.return_value = [make_row()]
+
+    response = service.search(SearchRequest(query="two words", include_answer=False))
+
+    deps["answer_generator"].generate_answer.assert_not_called()
+    assert response.answer is None
+
+
+def test_search_service_tolerates_answer_generation_errors(monkeypatch, settings) -> None:
+    service, deps = build_service(monkeypatch, settings)
+    deps["classifier"].classify.return_value = SearchPlan(
+        exact=False,
+        lexical=True,
+        semantic=False,
+        ocr=False,
+        code=False,
+        image=False,
+        graph=False,
+        reasons=[],
+    )
+    deps["store"].fts_search.return_value = [make_row()]
+    deps["answer_generator"].generate_answer.side_effect = RuntimeError("ollama down")
+
+    response = service.search(SearchRequest(query="two words"))
+
+    assert response.total == 1
+    assert response.answer is None
 
 
 def test_search_service_tolerates_graph_errors(monkeypatch, settings) -> None:
@@ -207,6 +286,7 @@ def test_search_service_readiness_and_close(monkeypatch, settings) -> None:
     assert readiness == {"status": "ok", "checks": {"postgres": True, "neo4j": False}}
     deps["graph"].close.assert_called_once()
     deps["embedder"].close.assert_called_once()
+    deps["answer_generator"].close.assert_called_once()
 
 
 class SettingsLike:

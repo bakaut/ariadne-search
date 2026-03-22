@@ -5,7 +5,8 @@ from collections import OrderedDict
 from typing import Any
 
 from kb_api.config import Settings
-from kb_api.models import SearchHit, SearchPlan, SearchRequest, SearchResponse
+from kb_api.models import SearchHit, SearchRequest, SearchResponse
+from kb_api.services.answer_generator import AnswerGenerator
 from kb_api.services.embedder import QueryEmbedder
 from kb_api.services.query_classifier import QueryClassifier
 from kb_api.storage.neo4j_graph import GraphContextStore
@@ -30,11 +31,13 @@ class SearchService:
         self.store = PostgresSearchStore(settings)
         self.graph = GraphContextStore(settings)
         self.embedder = QueryEmbedder(settings)
+        self.answer_generator = AnswerGenerator(settings)
         self.classifier = QueryClassifier(settings)
 
     def close(self) -> None:
         self.graph.close()
         self.embedder.close()
+        self.answer_generator.close()
 
     def readiness(self) -> dict[str, object]:
         return {
@@ -52,31 +55,62 @@ class SearchService:
         collected: list[SearchHit] = []
 
         if plan.exact:
-            collected.extend(self._adapt_hits("exact", self.store.exact_search(request.query, top_k)))
+            collected.extend(
+                self._adapt_hits("exact", self.store.exact_search(request.query, top_k))
+            )
         if plan.lexical:
-            collected.extend(self._adapt_hits("lexical", self.store.fts_search(request.query, top_k, filters)))
+            collected.extend(
+                self._adapt_hits(
+                    "lexical",
+                    self.store.fts_search(request.query, top_k, filters),
+                )
+            )
         if plan.code:
-            collected.extend(self._adapt_hits("code", self.store.code_search(request.query, top_k, filters)))
+            collected.extend(
+                self._adapt_hits(
+                    "code",
+                    self.store.code_search(request.query, top_k, filters),
+                )
+            )
         if plan.ocr:
-            collected.extend(self._adapt_hits("ocr", self.store.ocr_search(request.query, top_k, filters)))
+            collected.extend(
+                self._adapt_hits(
+                    "ocr",
+                    self.store.ocr_search(request.query, top_k, filters),
+                )
+            )
         if plan.semantic:
             embedding = self.embedder.embed_query(request.query)
             if embedding:
                 collected.extend(
-                    self._adapt_hits("semantic", self.store.semantic_search(embedding, top_k, filters))
+                    self._adapt_hits(
+                        "semantic",
+                        self.store.semantic_search(embedding, top_k, filters),
+                    )
                 )
 
         merged = self._merge_hits(collected, top_k=top_k * 2)
         if plan.graph and merged:
             self._apply_graph_context(merged)
         ranked = self._rerank(merged, top_k=top_k)
+        answer = self._generate_answer(request, ranked)
 
         return SearchResponse(
             query=request.query,
             plan=plan,
             total=len(ranked),
+            answer=answer,
             results=ranked,
         )
+
+    def _generate_answer(self, request: SearchRequest, hits: list[SearchHit]) -> str | None:
+        if not request.include_answer or not hits:
+            return None
+        try:
+            return self.answer_generator.generate_answer(request.query, hits)
+        except Exception:  # noqa: BLE001
+            logger.exception("Answer synthesis failed")
+            return None
 
     def _adapt_hits(self, channel: str, rows: list[dict[str, Any]]) -> list[SearchHit]:
         hits: list[SearchHit] = []
