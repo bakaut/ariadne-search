@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg18-trixie
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg17-trixie}
     container_name: kb-postgres
     restart: unless-stopped
     environment:
@@ -50,13 +50,18 @@ services:
       KB_NEO4J_DATABASE: ${KB_NEO4J_DATABASE:-neo4j}
     volumes:
       - ./init/neo4j:/init:ro
-    entrypoint: ["/bin/bash", "-lc"]
-    command: >
-      cypher-shell -a bolt://neo4j:7687
-      -u neo4j
-      -p "$KB_NEO4J_PASSWORD"
-      -d "$KB_NEO4J_DATABASE"
-      -f /init/001_neo4j_init.cypher
+    entrypoint: ["/var/lib/neo4j/bin/cypher-shell"]
+    command:
+      - -a
+      - bolt://neo4j:7687
+      - -u
+      - neo4j
+      - -p
+      - ${KB_NEO4J_PASSWORD}
+      - -d
+      - ${KB_NEO4J_DATABASE:-neo4j}
+      - -f
+      - /init/001_neo4j_init.cypher
 
   ollama:
     image: ollama/ollama

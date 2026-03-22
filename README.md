@@ -39,11 +39,24 @@ docker compose up -d --build api worker worker-api
 
 После старта:
 - API: `http://localhost:8000`
-- Swagger UI: `http://localhost:8000/docs`
+- API Swagger UI: `http://localhost:8000/docs`
 - Worker Dummy API: `http://localhost:8010`
+- Worker Swagger UI: `http://localhost:8010/docs`
 - Neo4j Browser: `http://localhost:7474`
 - PostgreSQL: `localhost:5432`
 - Ollama: `http://localhost:11434`
+
+## Swagger / OpenAPI
+
+Локально:
+- search API Swagger UI: `http://localhost:8000/docs`
+- search API OpenAPI JSON: `http://localhost:8000/openapi.json`
+- worker dummy API Swagger UI: `http://localhost:8010/docs`
+- worker dummy API OpenAPI JSON: `http://localhost:8010/openapi.json`
+
+Если deployment поднят на удалённом хосте, замени `localhost` на адрес сервера, например:
+- `http://home.poymoymir.ru:8000/docs`
+- `http://home.poymoymir.ru:8010/docs`
 
 ## Полезные команды
 
@@ -57,7 +70,9 @@ make reindex
 
 ## Важно
 
+- В `.env` должен быть задан `KB_NEO4J_PASSWORD` с ненулевым и не-дефолтным значением. Значение `neo4j` невалидно для новых образов Neo4j.
 - `init/postgres/*.sql` выполняются только при **первой** инициализации пустого data volume Postgres.
+- Образ Postgres по умолчанию закреплён на `pgvector/pgvector:pg17-trixie`, чтобы уже созданный volume `postgres_data` не ломался из-за перехода на layout PostgreSQL 18.
 - `NEO4J_AUTH` задаёт только начальный пароль и не меняет его, если `/data` уже содержит существующую БД.
 - Для простого локального старта в compose используется база Neo4j `neo4j`, а не отдельная `knowledge`, чтобы избежать лишней операционной сложности.
 - Если хочешь пересоздать схему Postgres заново, удали volume `postgres_data`.
@@ -66,14 +81,42 @@ make reindex
 ## Структура knowledge/
 
 Сюда можно класть:
-- `md`, `txt`, `json`, `yaml`, `log`
-- `pdf`, `docx`, `pptx`
-- `py`, `c`, `cpp`, `js`, `ts`, `sh`, `sql`
-- `jpg`, `png`, `webp`, `svg`, `drawio`, `puml`
+- текст и конфиги: `md`, `txt`, `rst`, `html`, `htm`, `json`, `yaml`, `yml`, `toml`, `log`
+- документы: `pdf`, `doc`, `docx`, `rtf`, `odt`, `pptx`, `xlsx`
+- код: `py`, `c`, `cc`, `cpp`, `cxx`, `h`, `hpp`, `js`, `ts`, `go`, `java`, `sql`, `sh`
+- изображения: `jpg`, `jpeg`, `png`, `webp`, `tif`, `tiff`
+- диаграммы: `svg`, `drawio`, `puml`, `plantuml`, `mmd`
 
 Worker будет обходить `/data/knowledge` внутри контейнера.
 
-Для ручной загрузки документа без прямого копирования в `knowledge/` можно использовать dummy endpoint:
+## Dummy Upload Handler
+
+Для ручной загрузки документа без прямого копирования в `knowledge/` можно использовать endpoint `POST /dummy/documents` на `worker-api`.
+
+Формат запроса:
+- `file` — multipart file, обязательный.
+- `relative_path` — относительный путь внутри первого каталога из `KB_SOURCE_ROOTS`, опциональный.
+- если `relative_path` не передан, используется `filename` из multipart payload.
+
+Ограничения handler'а:
+- принимает только относительные пути.
+- запрещает `..` и любые попытки выйти за пределы knowledge root.
+- проверяет расширение файла по allowlist из worker config.
+- сохраняет файл на диск перед синхронным ETL/indexing.
+
+Статусы ответа:
+- `indexed` — файл записан и успешно прошёл ETL/indexing.
+- `unchanged` — файл уже был проиндексирован с тем же checksum.
+
+Типовые ошибки:
+- `400 Bad Request` — пустой upload, неподдерживаемое расширение, абсолютный путь, path traversal.
+- `500 Internal Server Error` — файл сохранён, но indexing pipeline завершился ошибкой.
+
+Текущее поведение по типам:
+- `text`, `code`, `diagram` ветки уже дают searchable chunks.
+- `image`, `pdf`, `docx` и остальные office/OCR ветки пока подключены как stub-экстракторы: файл будет принят и зарегистрирован как document/asset, но searchable text может не появиться, пока не подключён реальный extractor.
+
+Пример:
 
 ```bash
 curl -X POST http://localhost:8010/dummy/documents \

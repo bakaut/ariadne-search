@@ -98,15 +98,31 @@ def test_postgres_mark_failed_truncates_error_text(monkeypatch) -> None:
 
     settings = Settings(app_env="test")
     store = PostgresStore(settings)
-    cursor = FakeCursor()
+    cursor = FakeCursor(fetchone_values=[["doc-id"]])
     connection = FakeConnection(cursor)
     monkeypatch.setattr(postgres_module.psycopg, "connect", lambda *args, **kwargs: connection)
 
     store.mark_failed("doc-id", "x" * 5000)
 
     assert connection.committed is True
-    params = cursor.executed[0][1]
+    params = cursor.executed[1][1]
     assert params[4] == "x" * 4000
+
+
+def test_postgres_mark_failed_allows_missing_document(monkeypatch) -> None:
+    import kb_worker.storage.postgres as postgres_module
+
+    settings = Settings(app_env="test")
+    store = PostgresStore(settings)
+    cursor = FakeCursor(fetchone_values=[None])
+    connection = FakeConnection(cursor)
+    monkeypatch.setattr(postgres_module.psycopg, "connect", lambda *args, **kwargs: connection)
+
+    store.mark_failed("missing-doc-id", "boom")
+
+    assert connection.committed is True
+    params = cursor.executed[1][1]
+    assert params[1] is None
 
 
 def test_postgres_vector_literal_and_ensure_file() -> None:

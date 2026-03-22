@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     app_env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
 
-    source_roots: list[Path] = Field(default_factory=lambda: [Path("/data/knowledge")])
+    source_roots: Annotated[list[Path], NoDecode] = Field(default_factory=lambda: [Path("/data/knowledge")])
     include_hidden: bool = False
     follow_symlinks: bool = False
     supported_extensions: set[str] = Field(

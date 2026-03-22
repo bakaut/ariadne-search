@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     api_title: str = "Knowledge Base Search API"
     api_version: str = "0.1.0"
 
-    source_roots: list[Path] = Field(default_factory=lambda: [Path("/data/knowledge")])
+    source_roots: Annotated[list[Path], NoDecode] = Field(default_factory=lambda: [Path("/data/knowledge")])
     postgres_dsn: str = "postgresql://kb:kb@postgres:5432/kb"
     postgres_schema: str = "kb"
 

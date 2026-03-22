@@ -30,20 +30,20 @@ FOR (n:File) REQUIRE n.file_id IS UNIQUE;
 CREATE CONSTRAINT symbol_symbol_id IF NOT EXISTS
 FOR (n:Symbol) REQUIRE n.symbol_id IS UNIQUE;
 
-CREATE TEXT INDEX document_search_text IF NOT EXISTS
-FOR (n:Document) ON (n.title, n.source_path, n.source_type);
+CREATE FULLTEXT INDEX document_search_text IF NOT EXISTS
+FOR (n:Document) ON EACH [n.title, n.source_path, n.source_type];
 
-CREATE TEXT INDEX entity_search_text IF NOT EXISTS
-FOR (n:Entity) ON (n.canonical_name, n.entity_type);
+CREATE FULLTEXT INDEX entity_search_text IF NOT EXISTS
+FOR (n:Entity) ON EACH [n.canonical_name, n.entity_type];
 
-CREATE TEXT INDEX symbol_search_text IF NOT EXISTS
-FOR (n:Symbol) ON (n.symbol_name, n.fq_name, n.symbol_kind);
+CREATE FULLTEXT INDEX symbol_search_text IF NOT EXISTS
+FOR (n:Symbol) ON EACH [n.symbol_name, n.fq_name, n.symbol_kind];
 
-CREATE TEXT INDEX file_search_text IF NOT EXISTS
-FOR (n:File) ON (n.relative_path, n.language);
+CREATE FULLTEXT INDEX file_search_text IF NOT EXISTS
+FOR (n:File) ON EACH [n.relative_path, n.language];
 
-CREATE TEXT INDEX repo_search_text IF NOT EXISTS
-FOR (n:Repo) ON (n.name, n.root_path);
+CREATE FULLTEXT INDEX repo_search_text IF NOT EXISTS
+FOR (n:Repo) ON EACH [n.name, n.root_path];
 
 // Optional: only if you later store embeddings in Neo4j itself.
 // CREATE VECTOR INDEX chunk_embedding_idx IF NOT EXISTS
