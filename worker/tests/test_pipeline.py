@@ -79,6 +79,29 @@ def test_process_file_runs_happy_path(monkeypatch, settings, make_file_record, t
     assert bundle.entities == ["entity"]
 
 
+def test_process_file_force_bypasses_unchanged_check(monkeypatch, settings, make_file_record, tmp_path) -> None:
+    path = tmp_path / "doc.md"
+    path.write_text("hello", encoding="utf-8")
+    pipeline, deps = build_pipeline(monkeypatch, settings)
+    deps["postgres"].has_changed.return_value = False
+    deps["classifier"].classify.return_value = SimpleNamespace(source_type="text_native")
+    chunk = ChunkArtifact(chunk_index=0, content="chunk")
+
+    def fake_extract(bundle, file_record, document_type):
+        bundle.chunks = [chunk]
+
+    pipeline._extract_into_bundle = Mock(side_effect=fake_extract)
+    pipeline._embed = Mock()
+    deps["entities"].extract.return_value = []
+
+    processed = pipeline.process_file(make_file_record(path), force=True)
+
+    assert processed is True
+    deps["classifier"].classify.assert_called_once()
+    deps["postgres"].upsert_bundle.assert_called_once()
+    deps["neo4j"].project_bundle.assert_called_once()
+
+
 def test_process_file_marks_failure_on_exception(monkeypatch, settings, make_file_record, tmp_path) -> None:
     path = tmp_path / "doc.md"
     path.write_text("hello", encoding="utf-8")

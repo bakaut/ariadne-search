@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: up infra app down logs ps pull-model reindex
+.PHONY: up infra app down logs ps pull-model reindex force-upload
 
 up:
 	docker compose up -d --build
@@ -26,3 +26,6 @@ pull-model:
 
 reindex:
 	docker compose run --rm worker run-once
+
+force-upload:
+	./scripts/force-upload-knowledge.sh

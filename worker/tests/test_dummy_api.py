@@ -15,8 +15,10 @@ class FakePipeline:
         self.closed = False
         self.postgres = type("FakePostgres", (), {"has_changed": lambda _, __: changed})()
         self._indexed = indexed
+        self.force = None
 
-    def process_file(self, file_record) -> bool:
+    def process_file(self, file_record, force: bool = False) -> bool:
+        self.force = force
         return self._indexed
 
     def close(self) -> None:
@@ -48,6 +50,18 @@ def test_dummy_ingest_service_writes_file_and_indexes(monkeypatch, settings, tmp
     assert response["source_path"] == str(target)
     assert target.read_text() == "hello knowledge"
     assert pipeline.closed is True
+    assert pipeline.force is False
+
+
+def test_dummy_ingest_service_force_reindexes_unchanged_file(monkeypatch, settings, tmp_path: Path) -> None:
+    pipeline = FakePipeline(changed=False, indexed=True)
+    monkeypatch.setattr("kb_worker.services.ingest.ETLPipeline", lambda cfg: pipeline)
+
+    service = DummyIngestService(settings)
+    response = service.ingest_upload(make_upload("notes/test.txt"), force=True)
+
+    assert response["status"] == "indexed"
+    assert pipeline.force is True
 
 
 @pytest.mark.parametrize("suffix", SUPPORTED_UPLOAD_SUFFIXES)
@@ -93,7 +107,7 @@ def test_create_app_accepts_upload(monkeypatch, settings, tmp_path: Path) -> Non
     monkeypatch.setattr(
         service,
         "ingest_upload",
-        lambda file, relative_path=None: {
+        lambda file, relative_path=None, force=False: {
             "status": "indexed",
             "source_path": str(tmp_path / (relative_path or file.filename)),
             "checksum": "abc",
@@ -108,7 +122,7 @@ def test_create_app_accepts_upload(monkeypatch, settings, tmp_path: Path) -> Non
         response = client.post(
             "/dummy/documents",
             files={"file": ("note.txt", b"hey", "text/plain")},
-            data={"relative_path": "docs/note.txt"},
+            data={"relative_path": "docs/note.txt", "force": "true"},
         )
 
     assert response.status_code == 200
@@ -127,6 +141,10 @@ def test_create_app_exposes_upload_contract_in_openapi(settings) -> None:
     operation = schema["paths"]["/dummy/documents"]["post"]
     assert operation["summary"] == "Upload and index a document"
     assert "multipart/form-data" in operation["requestBody"]["content"]
+    force_schema = (
+        operation["requestBody"]["content"]["multipart/form-data"]["schema"]["properties"]["force"]
+    )
+    assert force_schema["type"] == "boolean"
     assert operation["responses"]["200"]["description"].startswith("The file was accepted")
     assert operation["responses"]["400"]["description"].startswith("Validation error")
     assert operation["responses"]["500"]["description"].startswith("The file was saved")
@@ -158,7 +176,7 @@ def test_create_app_returns_400_for_bad_upload(monkeypatch, settings) -> None:
     monkeypatch.setattr(
         service,
         "ingest_upload",
-        lambda file, relative_path=None: (_ for _ in ()).throw(ValueError("bad path")),
+        lambda file, relative_path=None, force=False: (_ for _ in ()).throw(ValueError("bad path")),
     )
 
     app = create_app(settings)
@@ -183,7 +201,7 @@ def test_create_app_returns_500_for_index_failure(monkeypatch, settings) -> None
     monkeypatch.setattr(
         service,
         "ingest_upload",
-        lambda file, relative_path=None: (_ for _ in ()).throw(RuntimeError("index failed")),
+        lambda file, relative_path=None, force=False: (_ for _ in ()).throw(RuntimeError("index failed")),
     )
 
     app = create_app(settings)

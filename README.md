@@ -106,6 +106,7 @@ Worker будет обходить `/data/knowledge` внутри контейн
 Формат запроса:
 - `file` — multipart file, обязательный.
 - `relative_path` — относительный путь внутри первого каталога из `KB_SOURCE_ROOTS`, опциональный.
+- `force` — опциональный boolean; если `true`, ETL выполняется даже для уже известных checksum.
 - если `relative_path` не передан, используется `filename` из multipart payload.
 
 Ограничения handler'а:
@@ -131,5 +132,17 @@ Worker будет обходить `/data/knowledge` внутри контейн
 ```bash
 curl -X POST http://localhost:8010/dummy/documents \
   -F "file=@./README.md" \
-  -F "relative_path=uploads/README.md"
+  -F "relative_path=uploads/README.md" \
+  -F "force=true"
 ```
+
+Для принудительной загрузки всего дерева `knowledge/` через dummy API:
+
+```bash
+./scripts/force-upload-knowledge.sh
+```
+
+Переменные:
+- `WORKER_API_URL` — базовый URL worker API, по умолчанию `http://localhost:8010`.
+- `KNOWLEDGE_DIR` — путь до локального каталога `knowledge/`, по умолчанию `./knowledge`.
+- Скрипт автоматически пропускает файлы с расширениями вне worker allowlist.

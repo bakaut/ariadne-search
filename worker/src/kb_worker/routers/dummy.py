@@ -19,7 +19,10 @@ SUPPORTED_TYPES_DOC = (
 
 class UploadDocumentResponse(BaseModel):
     status: Literal["indexed", "unchanged"] = Field(
-        description="`indexed` means ETL ran successfully; `unchanged` means the same checksum was already indexed."
+        description=(
+            "`indexed` means ETL ran successfully, including forced reindex requests; "
+            "`unchanged` means the same checksum was already indexed and force was not requested."
+        )
     )
     source_path: str = Field(description="Absolute path inside the worker container knowledge root.")
     checksum: str = Field(description="SHA-256 checksum of the uploaded file.")
@@ -36,7 +39,8 @@ class ErrorResponse(BaseModel):
     summary="Upload and index a document",
     description=(
         "Saves the multipart file into the first configured knowledge root and runs synchronous "
-        "indexing. `relative_path` must stay inside the knowledge root. "
+        "indexing. Set `force=true` to bypass unchanged-check skipping. "
+        "`relative_path` must stay inside the knowledge root. "
         + SUPPORTED_TYPES_DOC
     ),
     responses={
@@ -47,6 +51,15 @@ class ErrorResponse(BaseModel):
                     "examples": {
                         "indexed": {
                             "summary": "Fresh upload",
+                            "value": {
+                                "status": "indexed",
+                                "source_path": "/data/knowledge/uploads/README.md",
+                                "checksum": "3b8f5c1b6d8b0c5d2f4f4f29f8ac7a6af6c65a6da0c6c0f1d0fcb2f1a6b2d3c4",
+                                "size_bytes": 1532,
+                            },
+                        },
+                        "forced": {
+                            "summary": "Forced reindex",
                             "value": {
                                 "status": "indexed",
                                 "source_path": "/data/knowledge/uploads/README.md",
@@ -98,10 +111,18 @@ def upload_document(
             examples=["uploads/README.md", "arch/overview.puml"],
         ),
     ] = None,
+    force: Annotated[
+        bool,
+        Form(
+            description=(
+                "When true, run ETL even if the same checksum is already indexed for the same path."
+            )
+        ),
+    ] = False,
     ingest_service: DummyIngestService = Depends(get_ingest_service),
 ) -> UploadDocumentResponse:
     try:
-        return ingest_service.ingest_upload(file=file, relative_path=relative_path)
+        return ingest_service.ingest_upload(file=file, relative_path=relative_path, force=force)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

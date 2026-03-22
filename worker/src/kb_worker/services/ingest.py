@@ -19,7 +19,12 @@ class DummyIngestService:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def ingest_upload(self, file: UploadedDocument, relative_path: str | None = None) -> dict[str, object]:
+    def ingest_upload(
+        self,
+        file: UploadedDocument,
+        relative_path: str | None = None,
+        force: bool = False,
+    ) -> dict[str, object]:
         target_path = self._target_path(relative_path=relative_path, filename=file.filename)
         payload = file.file.read()
         if not payload:
@@ -32,11 +37,11 @@ class DummyIngestService:
         pipeline = ETLPipeline(self.settings)
         try:
             changed = pipeline.postgres.has_changed(file_record)
-            indexed = pipeline.process_file(file_record)
+            indexed = pipeline.process_file(file_record, force=force)
         finally:
             pipeline.close()
 
-        if not changed:
+        if not changed and not force:
             status = "unchanged"
         elif indexed:
             status = "indexed"

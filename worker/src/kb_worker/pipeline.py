@@ -38,8 +38,8 @@ class ETLPipeline:
     def close(self) -> None:
         self.neo4j.close()
 
-    def process_file(self, file_record: FileRecord) -> bool:
-        if not self.postgres.has_changed(file_record):
+    def process_file(self, file_record: FileRecord, force: bool = False) -> bool:
+        if not force and not self.postgres.has_changed(file_record):
             logger.info("Skipping unchanged file: %s", file_record.path)
             return False
 

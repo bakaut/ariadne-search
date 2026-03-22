@@ -39,7 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "name": "dummy",
                 "description": (
                     "Manual upload endpoint for ad hoc ETL/indexing tests. The request is multipart "
-                    "form data with a required file and an optional relative_path."
+                    "form data with a required file, an optional relative_path, and an optional force flag."
                 ),
             },
         ],
