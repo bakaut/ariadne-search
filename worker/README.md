@@ -10,6 +10,7 @@
 - собирает базовые метаданные;
 - делает upsert в PostgreSQL;
 - строит graph projection в Neo4j;
+- поднимает dummy API для ручной загрузки документов в knowledge root;
 - умеет работать как one-shot job или циклический scheduler.
 
 Что пока заглушки:
@@ -38,4 +39,15 @@ kb-worker run-once
 ```bash
 kb-worker run-once
 kb-worker run-forever
+kb-worker serve-dummy-api --host 0.0.0.0 --port 8010
 ```
+
+## Dummy API
+
+```bash
+curl -X POST http://localhost:8010/dummy/documents \
+  -F "file=@./knowledge/example.txt" \
+  -F "relative_path=uploads/example.txt"
+```
+
+Эндпоинт записывает файл в первый `KB_SOURCE_ROOTS`, после чего сразу прогоняет его через текущий ETL pipeline.

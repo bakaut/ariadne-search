@@ -13,12 +13,32 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("run-once")
     subparsers.add_parser("run-forever")
+    serve = subparsers.add_parser("serve-dummy-api")
+    serve.add_argument("--host", default="0.0.0.0")
+    serve.add_argument("--port", type=int, default=8010)
+    serve.add_argument("--reload", action="store_true")
     return parser
+
+
+def serve_dummy_api(host: str, port: int, reload: bool) -> None:
+    import uvicorn
+
+    uvicorn.run(
+        "kb_worker.app:create_app",
+        host=host,
+        port=port,
+        reload=reload,
+        factory=True,
+    )
 
 
 def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.command == "serve-dummy-api":
+        serve_dummy_api(host=args.host, port=args.port, reload=args.reload)
+        return
 
     settings = Settings()
     setup_logging(settings.log_level)
