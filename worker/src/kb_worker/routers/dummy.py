@@ -91,14 +91,13 @@ def upload_document(
     relative_path: Annotated[
         str | None,
         Form(
-            default=None,
             description=(
                 "Optional relative destination path under the knowledge root, for example "
                 "`uploads/specs/readme.md`. Absolute paths and `..` segments are rejected."
             ),
             examples=["uploads/README.md", "arch/overview.puml"],
         ),
-    ],
+    ] = None,
     ingest_service: DummyIngestService = Depends(get_ingest_service),
 ) -> UploadDocumentResponse:
     try:
